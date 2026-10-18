@@ -1,0 +1,420 @@
+<!DOCTYPE html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nexus Tournaments</title>
+<style>:root{color-scheme:dark;--bg:#0f172a;--c:#1e293b;--c2:#0f1a30;--tx:#e8ecff;--m:#94a3b8;--a:#6366f1;--g:#10b981;--b:#334155;--danger:#ef4444;--google:#db4437}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}.wrap{max-width:760px;margin:auto;padding:14px}
+h1{font-size:20px;margin:0;background:linear-gradient(90deg,#818cf8,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent}h3{margin:0 0 8px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:12px}.r{display:flex;gap:8px;align-items:center}
+.bal{background:var(--c);border:1px solid var(--b);border-radius:20px;padding:5px 12px;font-weight:700;color:var(--g)}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px}.tabs button,.chip{flex:none;background:var(--c);color:var(--m);border:1px solid var(--b);border-radius:12px;padding:8px 14px;font-weight:600;cursor:pointer}
+.on{background:var(--a)!important;color:#fff!important;border-color:var(--a)!important}
+.card{background:var(--c);border:1px solid var(--b);border-radius:16px;padding:14px;margin-bottom:12px}.card .card{background:var(--c2)}
+label{display:block;font-size:12px;color:var(--m);margin:10px 0 4px}input,select,textarea{width:100%;background:var(--c2);color:var(--tx);border:1px solid var(--b);border-radius:10px;padding:10px;font:inherit}
+.btn{width:100%;margin-top:14px;background:var(--a);color:#fff;border:0;border-radius:12px;padding:12px;font-weight:700;cursor:pointer}.btn.alt{background:var(--b)}.btn-danger{background:var(--danger)}.btn-google{background:var(--google);margin-top:8px}
+.m{color:var(--m);font-size:13px}.img{width:100%;height:150px;object-fit:cover;border-radius:12px;margin-bottom:8px}
+.tag{display:inline-block;background:var(--c2);border:1px solid var(--b);border-radius:8px;padding:2px 8px;font-size:12px;margin:2px 4px 2px 0}
+.nt{border-left:3px solid var(--g);padding:8px 10px;margin-bottom:8px;background:var(--c2)}.qr{max-width:200px;display:block;margin:8px auto;border-radius:12px;background:#fff;padding:4px}
+.avatar{width:70px;height:70px;border-radius:50%;object-fit:cover;border:2px solid var(--a);margin:0 auto;display:block}
+.header-avatar{width:45px;height:45px;border-radius:50%;object-fit:cover;border:2px solid var(--a);margin-top:4px}
+.lb-avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--a)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--a);color:#fff;padding:10px 18px;border-radius:20px;display:none;z-index:9}
+#popup-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:none;z-index:99;justify-content:center;align-items:center}
+#popup-box{background:var(--c);border:1px solid var(--b);border-radius:16px;padding:20px;max-width:340px;text-align:center}
+</style></head>
+<body><div class="wrap" id="app"></div><div id="toast"></div>
+<div id="popup-modal"><div id="popup-box"><h3 style="color:#10b981">⚠️ Add Money Notice</h3><p style="font-size:14px;color:var(--tx);margin:10px 0">Take screenshot of your payment. If you not receive your payment, wait for 24 hour to add payment.</p><button class="btn" onclick="closePopup()">OK, Understood</button></div></div>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import{getDatabase,ref,set,push,get,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import{getAuth,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,GoogleAuthProvider,signInWithPopup}from"https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+const app=initializeApp({apiKey:"AIzaSyC1lLQVev6PKi-7L2Yz7aDLKCWoEuGZfME",authDomain:"tournament-9dc91.firebaseapp.com",databaseURL:"https://tournament-9dc91-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"tournament-9dc91",storageBucket:"tournament-9dc91.firebasestorage.app",messagingSenderId:"73472204852",appId:"1:73472204852:web:4faa6b1c97b3bd0b44ea61"});
+const db=getDatabase(app);
+const auth=getAuth(app);
+
+const SZ={'Solo BR':1,'BR Squad':4,'Duo BR':2,'Lone Wolf':1,'CS':4};
+const D={t:{},r:{},n:{},u:{},s:{},tx:{},blocked:{}};
+let me=sessionStorage.getItem('pl')||'',tab='play',mode='',sel=null,wm='add',am='online',lm='login';
+const $=i=>document.getElementById(i),v=i=>$(i)?$(i).value.trim():'',k=e=>e.toLowerCase().trim().replace(/[.#$\[\]\/@]/g,'_');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const toast=m=>{const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.x);toast.x=setTimeout(()=>t.style.display='none',2500)};
+
+['tournaments:t','regs:r','notifs:n','users:u','settings:s','transactions:tx','blocked:blocked'].forEach(x=>{const[p,s]=x.split(':');onValue(ref(db,p),sn=>{D[s]=sn.val()||{};sync()})});
+function sync(){const e=document.activeElement;if(e&&/INPUT|TEXTAREA|SELECT/.test(e.tagName))return;render()}
+
+const U=()=>D.u[me]||{},bal=()=>'₹'+(U().balance||0);
+const credit=(p,a)=>runTransaction(ref(db,p),b=>(b||0)+a);
+async function debit(p,a){let ok=false;await runTransaction(ref(db,p),b=>{b=b||0;if(b<a){ok=false;return b}ok=true;return b-a});return ok}
+const notify=(to,msg,reqData=null)=>push(ref(db,'notifs'),{to,msg,reqData,ts:Date.now(),from:U().email||'Player'});
+const logTx=(type,user,amount,details)=>push(ref(db,'transactions'),{type,user,amount,details,ts:Date.now()});
+function img(f,max,cb){const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const s=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);cb(c.toDataURL('image/jpeg',.7))};i.src=r.result};r.readAsDataURL(f)}
+
+function getMyRefCode(){
+    if(!me) return '0001';
+    let code = U().refCode;
+    if(!code){
+        const userKeys = Object.keys(D.u || {});
+        const idx = userKeys.indexOf(me);
+        const num = idx >= 0 ? idx + 1 : 1;
+        code = String(num).padStart(4, '0');
+        set(ref(db, 'users/' + me + '/refCode'), code);
+    }
+    return code;
+}
+
+function render(){$('app').innerHTML=me&&D.u[me]?panel():login()}
+function login(){
+    return `<div class="top"><h1>NEXUS TOURNAMENTS</h1></div>
+    <div class="card">
+        <div class="tabs">
+            <button class="${lm=='login'?'on':''}" onclick="lm='login';render()">Log In</button>
+            <button class="${lm=='reg'?'on':''}" onclick="lm='reg';render()">Sign Up</button>
+        </div>
+        <label>Gmail</label><input id="le" type="email">
+        <label>Password</label><input id="lp" type="password">
+        ${lm=='reg'?'<label>Referral Code (Optional)</label><input id="refCodeIn" placeholder="Optional code">':''}
+        <button class="btn" onclick="authAction()">${lm=='login'?'Log In':'Sign Up'}</button>
+        <button class="btn btn-google" onclick="googleLogin()">🌐 Continue with Google</button>
+        ${lm=='login'?'<p style="text-align:center;margin-top:12px"><a href="javascript:void(0)" onclick="forgotPassword()" style="color:var(--a);font-size:13px;text-decoration:none">Forgot Password?</a></p>':''}
+    </div>`;
+}
+
+async function authAction(){
+    const e=v('le').toLowerCase(),p=v('lp');
+    if(!e.includes('@')||p.length<4)return toast('Sahi details daalein');
+    const key=k(e);
+    if(D.blocked && D.blocked[key]) return toast('Ye ID admin dwara permanently block kar di gayi hai!');
+
+    try {
+        if(lm=='login'){
+            await signInWithEmailAndPassword(auth, e, p);
+        } else {
+            const s=await get(ref(db,'users/'+key));
+            if(s.exists())return toast('Account pehle se hai');
+            await createUserWithEmailAndPassword(auth, e, p);
+            const userCount = Object.keys(D.u || {}).length + 1;
+            const myRefCode = String(userCount).padStart(4, '0');
+            
+            let referredBy = '';
+            const enteredRef = v('refCodeIn');
+            if(enteredRef){
+                const foundUserEntry = Object.entries(D.u || {}).find(([k, u]) => (u.refCode === enteredRef || k === enteredRef));
+                if(foundUserEntry){
+                    referredBy = foundUserEntry[0];
+                }
+            }
+            await set(ref(db,'users/'+key), {email:e, balance:0, refCode:myRefCode, referredBy:referredBy});
+        }
+        me=key;sessionStorage.setItem('pl',key);tab='play';render();
+    } catch(err) {
+        toast('Authentication Error: ' + err.message);
+    }
+}
+
+async function googleLogin(){
+    const provider = new GoogleAuthProvider();
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const email = user.email.toLowerCase();
+        const key = k(email);
+        
+        if(D.blocked && D.blocked[key]) return toast('Ye ID admin dwara permanently block kar di gayi hai!');
+        
+        const s = await get(ref(db, 'users/' + key));
+        if(!s.exists()){
+            const userCount = Object.keys(D.u || {}).length + 1;
+            const myRefCode = String(userCount).padStart(4, '0');
+            await set(ref(db, 'users/' + key), {email: email, balance: 0, refCode: myRefCode, referredBy: ''});
+        }
+        me = key;
+        sessionStorage.setItem('pl', key);
+        tab = 'play';
+        render();
+    } catch(err) {
+        toast('Google Login Error: ' + err.message);
+    }
+}
+
+async function forgotPassword(){
+    const e = v('le').toLowerCase();
+    if(!e.includes('@')) return toast('Pehle upar apna Gmail enter karein!');
+    try {
+        await sendPasswordResetEmail(auth, e);
+        toast('Password reset link sent to your email!');
+    } catch(err) {
+        toast('Error: ' + err.message);
+    }
+}
+
+function logout(){sessionStorage.removeItem('pl');me='';sel=null;render()}
+
+function panel(){
+    const profile = U().profile || {};
+    const displayName = profile.name ? profile.name : esc(U().email.split('@')[0]);
+    const avatarImg = profile.img || '';
+
+    return `<div class="top">
+        <div>
+            <h1>Hi, ${displayName}</h1>
+            ${avatarImg?`<img src="${avatarImg}" class="header-avatar">`:`<div class="header-avatar" style="display:flex;align-items:center;justify-content:center;background:#334155;font-size:18px">👤</div>`}
+        </div>
+        <div class="r"><span class="bal">${bal()}</span><button class="chip" onclick="logout()">Log Out</button></div>
+    </div>
+    <div class="tabs">${[['play','🎮 Play'],['wallet','💰 Wallet'],['my','My Matches'],['lb','🏆 Leaderboard'],['profile','👤 Profile'],['cmp','⚠️ Complain'],['inbox','🔔 Inbox']].map(([a,l])=>`<button class="${tab==a?'on':''}" onclick="tab='${a}';sel=null;render()">${l}</button>`).join('')}</div>
+    <div class="card">${V[tab]()}</div>`;
+}
+
+const V={
+play:()=>{
+if(sel&&sel.s=='form')return form();if(sel&&sel.s=='pay')return `<h3>Balance Kam Hai</h3><p>Entry Fee ₹${D.t[sel.id].fee} · Balance: ${bal()}</p>${addBal()}<button class="btn alt" onclick="sel.s='form';render()">Back</button>`;
+let h='<h3>Game Mode Chuno</h3><div class="tabs">'+Object.keys(SZ).map(x=>`<button class="${mode==x?'on':''}" onclick="mode='${x}';render()">${x}</button>`).join('')+'</div>';if(!mode)return h+'<p class="m">Game mode chunein</p>';
+const l=Object.entries(D.t).filter(([i,t])=>t.type==mode).reverse();
+return h+(l.length?l.map(([id,t])=>`<div class="card">${t.img?`<img class="img" src="${t.img}">`:''}<b style="font-size:17px">${esc(t.name)}</b><div><span class="tag">Entry ₹${t.fee}</span><span class="tag">₹${t.kill} Per Kill</span><span class="tag">🕒 ${esc(t.time||'N/A')}</span></div><div class="m" style="white-space:pre-wrap"><b>Rules:</b>\n${esc(t.rules||'-')}</div>${(D.r[id]||{})[me]?'<p class="m">✅ Registered</p>':`<button class="btn" onclick="sel={s:'form',id:'${id}'};render()">Proceed</button>`}</div>`).join(''):'<div class="card" style="text-align:center"><p class="m">❌ No Tournament Available for this mode.</p></div>')},
+
+wallet:()=>`<h3>Wallet & Withdraw</h3><p>Current Balance: <b>${bal()}</b></p>
+<div class="tabs"><button class="${wm=='add'?'on':''}" onclick="wm='add';render()">Add Balance</button><button class="${wm=='wd'?'on':''}" onclick="wm='wd';render()">Withdraw</button></div>
+${wm=='add'?addBal():`
+<label>UPI ID</label><input id="pwUpi" placeholder="yourupi@oksbi">
+<label>Amount ₹</label><input id="pwAmt" type="number">
+<button class="btn" onclick="playerWithdraw()">Request Withdraw</button>
+`}`,
+
+my:()=>{const l=Object.keys(D.r||{}).filter(id=>D.r[id][me]&&D.t[id]);return `<h3>My Matches</h3>`+(l.length?l.map(id=>{const t=D.t[id];return `<div class="card"><b>${esc(t.name)}</b> <span class="tag">${t.type}</span><p>🔑 Room ID: <b>${esc(t.room)}</b><br>Password: <b>${esc(t.pass)}</b></p></div>`}).join(''):'<p class="m">Koi registration nahi hai</p>')},
+
+lb:()=>{
+    const counts={};
+    const now=new Date();
+    const curMonth=now.getMonth();
+    const curYear=now.getFullYear();
+
+    Object.entries(D.r||{}).forEach(([tourId, regUsers])=>{
+        Object.entries(regUsers||{}).forEach(([uKey, regData])=>{
+            const rDate=new Date(regData.ts || Date.now());
+            if(rDate.getMonth()===curMonth && rDate.getFullYear()===curYear){
+                counts[uKey]=(counts[uKey]||0)+1;
+            }
+        });
+    });
+
+    const sortedUsers=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const top10=sortedUsers.slice(0,10);
+    
+    let myRankIdx = sortedUsers.findIndex(([uKey]) => uKey === me);
+    let myRankDisplay = '';
+    if(myRankIdx !== -1) {
+        if(myRankIdx < 10) {
+            myRankDisplay = `<div class="card" style="border-color:var(--a);background:var(--c2)"><b>Aapki Rank: #${myRankIdx + 1} (Top 10 me hain!)</b></div>`;
+        } else {
+            myRankDisplay = `<div class="card" style="border-color:#eab308;background:var(--c2)"><b>Aapki Rank: 10+ (Total Participated: ${counts[me] || 0})</b></div>`;
+        }
+    } else {
+        myRankDisplay = `<div class="card" style="border-color:#94a3b8;background:var(--c2)"><b>Aapki Rank: 10+ (Abhi koi participation nahi hai)</b></div>`;
+    }
+
+    return `<h3>🏆 Top 10 Leaderboard (This Month)</h3>${myRankDisplay}` +
+    (top10.length? top10.map(([uKey, count], idx)=>{
+        const userObj = D.u[uKey] || {};
+        const profile = userObj.profile || {};
+        const name = profile.name || userObj.email || 'Gamer';
+        const avatar = profile.img || '';
+        return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <strong style="color:var(--a);font-size:16px">#${idx+1}</strong>
+                ${avatar?`<img src="${avatar}" class="lb-avatar">`:`<div class="lb-avatar" style="display:inline-flex;align-items:center;justify-content:center;background:#334155">👤</div>`}
+                <div><b>${esc(name)}</b><div class="m">${esc(userObj.email||'')}</div></div>
+            </div>
+            <span class="tag" style="background:var(--a);color:#fff">🔥 ${count} Tournaments</span>
+        </div>`;
+    }).join(''):'<p class="m">Is mahine abhi tak koi participation nahi hua hai.</p>');
+},
+
+profile:()=>{
+const p=U().profile||{};
+const myRefCode = getMyRefCode();
+
+let currentRefCodeDisplay = '';
+if(U().referredBy && D.u[U().referredBy]){
+    currentRefCodeDisplay = D.u[U().referredBy].refCode || 'Added';
+}
+
+const myRegs=Object.entries(D.r||{}).filter(([id,regs])=>regs[me]&&D.t[id]);
+const myTx=Object.values(D.tx||{}).filter(x=>x.user===U().email).sort((a,b)=>b.ts-a.ts);
+
+return `<h3>👤 Player Profile</h3>
+<div class="card" style="background:var(--c2);text-align:center;padding:12px">
+    <span class="m">Aapka Referral Code (Share & Earn):</span>
+    <b style="font-size:22px;color:var(--g);display:block;margin:4px 0">${myRefCode}</b>
+    <span class="m" style="font-size:11px;display:block">💡 नोट: जब आप किसी को अपना रेफरल कोड देते हैं, तो उसे 20% बोनस तभी मिलेगा जब वह Main Admin (Admin 1) के माध्यम से पैसे जोड़ेगा और एडमिन उसे अप्रूव करेगा।</span>
+</div>
+
+<div style="text-align:center; margin-bottom:10px" id="avatar-container">
+    ${p.img?`<img src="${p.img}" class="avatar">`:`<div class="avatar" style="display:inline-flex;align-items:center;justify-content:center;background:#334155;font-size:24px">📷</div>`}
+</div>
+<label>Upload Profile Image</label><input id="pImgFile" type="file" accept="image/*" onchange="previewAvatar(event)">
+<label>Name</label><input id="pName" value="${esc(p.name||'')}" placeholder="Apna naam likhein">
+<label>Free Fire ID (UID)</label><input id="pFFId" value="${esc(p.ffId||'')}" placeholder="Free Fire UID likhein">
+
+<label style="margin-top:12px;color:var(--a);font-weight:600">Add / Update Other Person's Referrer Code:</label>
+<input id="pOtherRefCode" value="${esc(currentRefCodeDisplay)}" placeholder="Dusre ka Referral Code daalein">
+<span class="m" style="font-size:11px">यहाँ रेफरल कोड डालने पर जब आप Main Admin से पैसे जोड़ेंगे और एडमिन अप्रूव करेगा, तो उस बंदे को 20% मिलेगा।</span>
+
+<button class="btn" onclick="saveProfile()">Save Profile</button>
+<button class="btn btn-danger" style="margin-top:20px" onclick="deleteAccountPermanently()">🗑️ Delete Account Permanently</button>
+
+<h3 style="margin-top:20px">🏆 Tournament Participation History</h3>
+${myRegs.length?`<div style="overflow-x:auto"><table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:8px">
+<tr style="border-bottom:1px solid var(--b);color:var(--m)"><th style="text-align:left;padding:6px">Date</th><th style="text-align:left;padding:6px">Time</th><th style="text-align:left;padding:6px">Tournament Name</th></tr>
+${myRegs.map(([id,regs])=>{const t=D.t[id];const regInfo=regs[me];const d=new Date(regInfo.ts).toLocaleDateString();const tm=new Date(regInfo.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});return `<tr style="border-bottom:1px solid #1e293b"><td style="padding:6px">${d}</td><td style="padding:6px">${tm}</td><td style="padding:6px">${esc(t.name)}</td></tr>`}).join('')}
+</table></div>`:'<p class="m">Abhi tak kisi tournament me participate nahi kiya.</p>'}
+
+<h3 style="margin-top:20px">💰 All Transactions History</h3>
+${myTx.length?myTx.map(x=>`<div class="nt"><b>[${x.type}]</b> ₹${x.amount} -${esc(x.details)}<br><span class="m">${new Date(x.ts).toLocaleString()}</span></div>`).join(''):'<p class="m">Koi transaction nahi hai</p>'}
+`;},
+
+cmp:()=>`<h3>Complain & Social Links</h3>
+<div style="margin-bottom:14px">
+    <label><b>फॉर कंप्लेंट</b></label>
+    <a href="https://chat.whatsapp.com/G3gXBmvzvbl8ZOL9PnCort?s=cl&p=a&mlu=4&ilr=4" target="_blank" style="color:#10b981;word-break:break-all;display:block;margin-top:4px;font-weight:600">WhatsApp Group Join Karein</a>
+</div>
+<div style="margin-bottom:14px">
+    <label><b>फॉर सीइंग योर रीकैप योर मैच</b></label>
+    <a href="https://www.youtube.com/@Alpha_tournament" target="_blank" style="color:#6366f1;word-break:break-all;display:block;margin-top:4px;font-weight:600">YouTube Channel Visit Karein</a>
+</div>
+<label>Apni Complain Likhein</label>
+<textarea id="cmpTxt" rows="4" placeholder="Kuch samasya hai to likhein..."></textarea>
+<button class="btn" onclick="sendCmp()">Send Complain</button>`,
+
+inbox:()=>{const l=Object.entries(D.n||{}).filter(([k,n])=>n.to=='all'||n.to=='u:'+me).sort((a,b)=>b[1].ts-a[1].ts);return `<h3>🔔 Notifications</h3>`+(l.length?l.map(([key,n])=>`<div class="nt" style="display:flex;justify-content:space-between;align-items:flex-start"><div>${esc(n.msg)}<div class="m">${new Date(n.ts).toLocaleString()}</div></div><button onclick="deleteNotif('${key}')" style="background:transparent;border:0;color:#ef4444;cursor:pointer;font-size:16px">❌</button></div>`).join(''):'<p class="m">Koi message nahi hai</p>')}};
+
+function form(){const t=D.t[sel.id],n=SZ[t.type];let h=`<h3>${esc(t.name)}</h3>`;if(n>1)h+='<label>Team Name</label><input id="tm">';
+for(let i=0;i<n;i++)h+=`${n>1?`<b style="display:block;margin-top:12px">Player ${i+1}</b>`:''}<label>UID</label><input id="u${i}"><label>Nickname</label><input id="k${i}">`;
+return h+`<button class="btn" onclick="regCheck()">Proceed</button><button class="btn alt" onclick="sel=null;render()">Back</button>`}
+
+async function regCheck(){const t=D.t[sel.id],n=SZ[t.type],pl=[];for(let i=0;i<n;i++){const u=v('u'+i),q=v('k'+i);if(!u||!q)return toast('UID/Nick bharen');pl.push({uid:u,nick:q})}
+if(n>1&&!v('tm'))return toast('Team Name bharen');sel.team=n>1?v('tm'):'';sel.pl=pl;
+if(!await debit('users/'+me+'/balance',t.fee)){sel.s='pay';return render()}
+if(t.by!=1)await credit('admins/'+t.by+'/balance',t.fee);
+await set(ref(db,'regs/'+sel.id+'/'+me),{team:sel.team,players:pl,email:U().email,ts:Date.now()});
+await logTx('Entry Fee',U().email,t.fee,`Tournament: ${t.name}`);
+await notify('a:'+t.by,`${U().email} ne "${t.name}" me register kiya`);sel=null;tab='my';toast('Registration Complete!');render()}
+
+function addBal(){
+    return `<div class="tabs"><button class="${am=='online'?'on':''}" onclick="am='online';render()">Online</button><button class="${am=='cash'?'on':''}" onclick="am='cash';render()">Cash</button></div>
+    ${am=='online'?`
+        ${D.s.qr?`<img src="${D.s.qr}" class="qr">`:`<p class="m" style="text-align:center">QR Code abhi upload nahi hua hai</p>`}
+        <p class="m" style="text-align:center">Admin UPI ID: <b>${esc(D.s.upi||'Set nahi hai')}</b></p>
+    `:'<label>Admin No. (1/2/3)</label><input id="bn" type="number">'}
+    <label>Amount ₹</label><input id="ba" type="number"><button class="btn" onclick="reqBal()">Proceed</button>`;
+}
+
+async function reqBal(){
+    const a=+v('ba');
+    if(!(a>0))return toast('Amount daalein');
+    
+    let destAdmin = 1;
+    if(am == 'cash') {
+        const n = +v('bn');
+        if(![1,2,3].includes(n)) return toast('Admin No. Galat');
+        destAdmin = n;
+    }
+
+    const userRefBy = U().referredBy || '';
+    let refMsg = '';
+    let bonusAmount = 0;
+
+    if(destAdmin === 1 && userRefBy && D.u[userRefBy]){
+        const refUserEmail = D.u[userRefBy].email;
+        bonusAmount = a * 0.20; // 20% bonus
+        refMsg = ` | Referred By: ${refUserEmail} (Referrer ko ₹${bonusAmount} 20% bonus approval par milega)`;
+    } else if(destAdmin !== 1 && userRefBy) {
+        refMsg = ` | (Cash request to Admin 2/3: Referral bonus not applicable)`;
+    }
+
+    const reqData = {
+        playerKey: me,
+        playerEmail: U().email,
+        amount: a,
+        referrerKey: destAdmin === 1 ? userRefBy : null,
+        bonusAmount: bonusAmount
+    };
+
+    const msgTxt = `${am=='online'?'💳 ONLINE':'💵 CASH'} Request: ${U().email} ne ₹${a} pay kiye${refMsg}`;
+
+    await notify('a:'+destAdmin, msgTxt, reqData);
+    if(destAdmin !== 1) await notify('a:1', msgTxt, reqData);
+    await logTx('Add Money Request', U().email, a, am=='online'?'Online UPI Request':'Cash Request Admin '+destAdmin);
+
+    $('ba').value='';
+    showPopup();
+}
+
+function showPopup(){
+    $('popup-modal').style.display='flex';
+}
+window.closePopup = function(){
+    $('popup-modal').style.display='none';
+    toast('Request Sent Successfully!');
+}
+
+async function playerWithdraw(){const upi=v('pwUpi'),amount=+v('pwAmt');if(!upi||!(amount>0))return toast('Sahi UPI ID aur amount bharen');
+if(U().balance<amount)return toast('Insufficient balance');if(!await debit('users/'+me+'/balance',amount))return toast('Balance deduction failed');
+await logTx('Player Withdraw',U().email,amount,'UPI: '+upi);await notify('a:1',`💸 Player Withdraw Request: ${U().email} requested ₹${amount} via UPI: ${upi}`);
+toast('Withdrawal request sent to admin!');render();}
+
+function previewAvatar(event){
+    const file = event.target.files[0];
+    if(file){
+        const reader = new FileReader();
+        reader.onload = function(e){
+            $('avatar-container').innerHTML = `<img src="${e.target.result}" class="avatar">`;
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+async function saveProfile(){
+    const name=v('pName'),ffId=v('pFFId'), otherRefCode=v('pOtherRefCode');
+    if(!name||!ffId)return toast('Name aur Free Fire ID bharen');
+    
+    let referredByKey = U().referredBy || '';
+    if(otherRefCode){
+        const foundUserEntry = Object.entries(D.u || {}).find(([k, u]) => (u.refCode === otherRefCode || k === otherRefCode));
+        if(foundUserEntry){
+            referredByKey = foundUserEntry[0];
+        } else {
+            toast('Referred code galat tha, baki profile save ho gayi!');
+        }
+    }
+
+    const f=$('pImgFile').files[0];
+    const existingImg = (U().profile||{}).img || '';
+    
+    await set(ref(db, 'users/'+me+'/referredBy'), referredByKey);
+
+    if(f){
+        img(f, 200, async (base64Img) => {
+            await set(ref(db,'users/'+me+'/profile'),{name,ffId,img:base64Img});
+            toast('Profile saved successfully!');
+            render();
+        });
+    } else {
+        await set(ref(db,'users/'+me+'/profile'),{name,ffId,img:existingImg});
+        toast('Profile saved successfully!');
+        render();
+    }
+}
+
+async function deleteAccountPermanently(){
+    if(!confirm('Kya aap apna account permanently delete karna chahte hain? Aapka sara data aur balance hamesha ke liye hat jayega.')) return;
+    await set(ref(db, 'users/' + me), null);
+    toast('Aapka account permanently delete ho gaya hai.');
+    logout();
+}
+
+async function deleteNotif(key){await set(ref(db,'notifs/'+key),null);toast('Notification delete kar di gayi hai');}
+async function sendCmp(){const m=v('cmpTxt');if(!m)return toast('Complain likhein');await push(ref(db,'complains'),{email:U().email,msg:m,ts:Date.now()});toast('Complain bhej di gayi hai');$('cmpTxt').value=''}
+
+Object.assign(window,{authAction,googleLogin,forgotPassword,logout,regCheck,reqBal,playerWithdraw,previewAvatar,saveProfile,deleteAccountPermanently,deleteNotif,sendCmp,render});
+Object.defineProperties(window,Object.fromEntries(['tab','mode','sel','wm','am','lm'].map(n=>[n,{get:()=>({tab,mode,sel,wm,am,lm})[n],set:x=>{({tab:()=>tab=x,mode:()=>mode=x,sel:()=>sel=x,wm:()=>wm=x,am:()=>am=x,lm:()=>lm=x})[n]()},configurable:true}])));
+render();
+</script></body></html>
